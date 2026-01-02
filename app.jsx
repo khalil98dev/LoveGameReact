@@ -35,7 +35,7 @@ const GitHub = ({ className }) => (
 const GITHUB_CONFIG = {
   owner: 'khalil98dev',
   repo: 'LoveGameReact',
-  token: 'YOUR_GITHUB_TOKEN_HERE', // Replace with your actual GitHub token
+  token: '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', // Replace with your actual GitHub token
   filePath: 'plays.json'
 };
 

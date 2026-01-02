@@ -26,12 +26,25 @@ const History = ({ className }) => (
 );
 
 // GitHub Configuration
-const GITHUB_CONFIG = {
-  owner: 'khalil98dev',  // ⚠️ CHANGE THIS
-  repo: 'LoveGameReact',    // Your repository name
-  token: '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',      // ⚠️ CHANGE THIS - Paste your token here
-  filePath: 'plays.json'
-};
+// const GITHUB_CONFIG = {
+//   owner: 'khalil98dev',  // ⚠️ CHANGE THIS
+//   repo: 'LoveGameReact',    // Your repository name
+//   token: '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',      // ⚠️ CHANGE THIS - Paste your token here
+//   filePath: 'plays.json'
+// };
+
+const STORAGE_KEY = "love_game_data";
+
+
+const getInitialData = () => ({
+  devices: [],
+  plays: [],
+  stats: {
+    totalPlays: 0,
+    uniqueDevices: 0
+  }
+});
+
 
 const LoveCalculatorGame = () => {
   const [name1, setName1] = useState('');
@@ -63,99 +76,48 @@ const LoveCalculatorGame = () => {
   };
 
   // Load data from GitHub
-  const loadFromGitHub = async () => {
-    try {
-      const response = await fetch(
-        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-        {
-          headers: {
-            'Authorization': `token ${GITHUB_CONFIG.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
-      );
+const loadFromStorage = () => {
+  let data = localStorage.getItem(STORAGE_KEY);
 
-      if (response.ok) {
-        const data = await response.json();
-        setFileSha(data.sha);
-        
-        const content = JSON.parse(atob(data.content));
-        setStats({
-          totalPlays: content.stats.totalPlays,
-          uniqueDevices: content.stats.uniqueDevices
-        });
-        
-        // Load personal history from localStorage
-        const localHistory = localStorage.getItem('game_history');
-        if (localHistory) {
-          setHistory(JSON.parse(localHistory));
-        }
-      }
-    } catch (error) {
-      console.error('Error loading from GitHub:', error);
-    }
-  };
+  if (!data) {
+    data = getInitialData();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } else {
+    data = JSON.parse(data);
+  }
+
+  setStats(data.stats);
+
+  const localHistory = localStorage.getItem("game_history");
+  if (localHistory) {
+    setHistory(JSON.parse(localHistory));
+  }
+};
 
   // Save data to GitHub
-  const saveToGitHub = async (gameData) => {
-    try {
-      // First, get current file content
-      const getResponse = await fetch(
-        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-        {
-          headers: {
-            'Authorization': `token ${GITHUB_CONFIG.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
-      );
+  const saveToStorage = (gameData) => {
+  let data = JSON.parse(localStorage.getItem(STORAGE_KEY));
 
-      const currentFile = await getResponse.json();
-      const currentContent = JSON.parse(atob(currentFile.content));
-      
-      // Update content
-      const deviceSet = new Set(currentContent.devices);
-      deviceSet.add(deviceId);
-      
-      currentContent.devices = Array.from(deviceSet);
-      currentContent.plays.push(gameData);
-      currentContent.stats.totalPlays = currentContent.plays.length;
-      currentContent.stats.uniqueDevices = deviceSet.size;
+  if (!data) data = getInitialData();
 
-      // Commit changes to GitHub
-      const updateResponse = await fetch(
-        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `token ${GITHUB_CONFIG.token}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: `New play: ${gameData.name1} ❤️ ${gameData.name2} = ${gameData.percentage}%`,
-            content: btoa(JSON.stringify(currentContent, null, 2)),
-            sha: currentFile.sha
-          })
-        }
-      );
+  if (!data.devices.includes(deviceId)) {
+    data.devices.push(deviceId);
+  }
 
-      if (updateResponse.ok) {
-        console.log('✅ Data saved to GitHub!');
-        setStats({
-          totalPlays: currentContent.stats.totalPlays,
-          uniqueDevices: currentContent.stats.uniqueDevices
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error saving to GitHub:', error);
-    }
-  };
+  data.plays.push(gameData);
+
+  data.stats.totalPlays = data.plays.length;
+  data.stats.uniqueDevices = data.devices.length;
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+  setStats(data.stats);
+};
 
   useEffect(() => {
     const id = getDeviceId();
     setDeviceId(id);
-    loadFromGitHub();
+    loadFromStorage();
   }, []);
 
   const calculateLove = () => {
@@ -194,7 +156,8 @@ const LoveCalculatorGame = () => {
       setHistory(newHistory);
       
       // Save to GitHub
-      saveToGitHub(gameData);
+      saveToStorage(gameData);
+      
       
       setIsSpinning(false);
     }, 2000);

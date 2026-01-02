@@ -1,211 +1,166 @@
 const { useState, useEffect } = React;
 
-// Lucide React icons as components
+// Icons
 const Heart = ({ className, fill }) => (
-  <svg
-    className={className}
-    fill={fill || "none"}
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-    />
+  <svg className={className} fill={fill || "none"} stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
   </svg>
 );
 
 const Sparkles = ({ className }) => (
-  <svg
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-    />
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
   </svg>
 );
 
 const RotateCcw = ({ className }) => (
-  <svg
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
-    />
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
   </svg>
 );
 
 const History = ({ className }) => (
-  <svg
-    className={className}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-    xmlns="http://www.w3.org/2000/svg"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-    />
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
   </svg>
 );
 
-// Mock storage for static deployment (uses localStorage)
-const mockStorage = {
-  async get(key, shared = false) {
-    const storageKey = shared ? `shared_${key}` : `local_${key}`;
-    const value = localStorage.getItem(storageKey);
-    return value ? { key, value, shared } : null;
-  },
-  async set(key, value, shared = false) {
-    const storageKey = shared ? `shared_${key}` : `local_${key}`;
-    localStorage.setItem(storageKey, value);
-    return { key, value, shared };
-  },
-  async delete(key, shared = false) {
-    const storageKey = shared ? `shared_${key}` : `local_${key}`;
-    localStorage.removeItem(storageKey);
-    return { key, deleted: true, shared };
-  },
-  async list(prefix = "", shared = false) {
-    const keys = [];
-    const prefixKey = shared ? `shared_${prefix}` : `local_${prefix}`;
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key.startsWith(prefixKey)) {
-        keys.push(key);
-      }
-    }
-    return { keys, prefix, shared };
-  },
+// GitHub Configuration
+const GITHUB_CONFIG = {
+  owner: 'YOUR-GITHUB-USERNAME',  // ⚠️ CHANGE THIS
+  repo: 'love-calculator-game',    // Your repository name
+  token: 'YOUR-GITHUB-TOKEN',      // ⚠️ CHANGE THIS - Paste your token here
+  filePath: 'plays.json'
 };
 
-// Set up mock storage if not available
-if (typeof window !== "undefined" && !window.storage) {
-  window.storage = mockStorage;
-}
-
 const LoveCalculatorGame = () => {
-  const [name1, setName1] = useState("");
-  const [name2, setName2] = useState("");
+  const [name1, setName1] = useState('');
+  const [name2, setName2] = useState('');
   const [result, setResult] = useState(null);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [deviceId, setDeviceId] = useState("");
+  const [deviceId, setDeviceId] = useState('');
   const [history, setHistory] = useState([]);
   const [showHistory, setShowHistory] = useState(false);
   const [stats, setStats] = useState({ totalPlays: 0, uniqueDevices: 0 });
+  const [fileSha, setFileSha] = useState('');
 
   const generateUUID = () => {
-    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
   };
 
-  useEffect(() => {
-    const loadDeviceData = async () => {
-      try {
-        const storedId = await window.storage.get("device_id");
+  // Get or create device ID from localStorage
+  const getDeviceId = () => {
+    let id = localStorage.getItem('device_id');
+    if (!id) {
+      id = generateUUID();
+      localStorage.setItem('device_id', id);
+    }
+    return id;
+  };
 
-        if (storedId && storedId.value) {
-          setDeviceId(storedId.value);
-        } else {
-          const newId = generateUUID();
-          await window.storage.set("device_id", newId);
-          setDeviceId(newId);
+  // Load data from GitHub
+  const loadFromGitHub = async () => {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+        {
+          headers: {
+            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
         }
+      );
 
-        await loadHistory();
-        await loadStats();
-      } catch (error) {
-        console.error("Storage error:", error);
-        setDeviceId(generateUUID());
+      if (response.ok) {
+        const data = await response.json();
+        setFileSha(data.sha);
+        
+        const content = JSON.parse(atob(data.content));
+        setStats({
+          totalPlays: content.stats.totalPlays,
+          uniqueDevices: content.stats.uniqueDevices
+        });
+        
+        // Load personal history from localStorage
+        const localHistory = localStorage.getItem('game_history');
+        if (localHistory) {
+          setHistory(JSON.parse(localHistory));
+        }
       }
-    };
+    } catch (error) {
+      console.error('Error loading from GitHub:', error);
+    }
+  };
 
-    loadDeviceData();
+  // Save data to GitHub
+  const saveToGitHub = async (gameData) => {
+    try {
+      // First, get current file content
+      const getResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+        {
+          headers: {
+            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      );
+
+      const currentFile = await getResponse.json();
+      const currentContent = JSON.parse(atob(currentFile.content));
+      
+      // Update content
+      const deviceSet = new Set(currentContent.devices);
+      deviceSet.add(deviceId);
+      
+      currentContent.devices = Array.from(deviceSet);
+      currentContent.plays.push(gameData);
+      currentContent.stats.totalPlays = currentContent.plays.length;
+      currentContent.stats.uniqueDevices = deviceSet.size;
+
+      // Commit changes to GitHub
+      const updateResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `New play: ${gameData.name1} ❤️ ${gameData.name2} = ${gameData.percentage}%`,
+            content: btoa(JSON.stringify(currentContent, null, 2)),
+            sha: currentFile.sha
+          })
+        }
+      );
+
+      if (updateResponse.ok) {
+        console.log('✅ Data saved to GitHub!');
+        setStats({
+          totalPlays: currentContent.stats.totalPlays,
+          uniqueDevices: currentContent.stats.uniqueDevices
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error saving to GitHub:', error);
+    }
+  };
+
+  useEffect(() => {
+    const id = getDeviceId();
+    setDeviceId(id);
+    loadFromGitHub();
   }, []);
-
-  const loadHistory = async () => {
-    try {
-      const historyData = await window.storage.get("game_history");
-      if (historyData && historyData.value) {
-        setHistory(JSON.parse(historyData.value));
-      }
-    } catch (error) {
-      console.error("Error loading history:", error);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const statsData = await window.storage.get("game_stats", true);
-      if (statsData && statsData.value) {
-        setStats(JSON.parse(statsData.value));
-      }
-    } catch (error) {
-      console.error("Error loading stats:", error);
-    }
-  };
-
-  const saveGameResult = async (gameData) => {
-    try {
-      const newHistory = [gameData, ...history].slice(0, 10);
-      await window.storage.set("game_history", JSON.stringify(newHistory));
-      setHistory(newHistory);
-
-      const currentStats = await window.storage.get("game_stats", true);
-      let devices = new Set();
-      let plays = 0;
-
-      if (currentStats && currentStats.value) {
-        const parsed = JSON.parse(currentStats.value);
-        devices = new Set(parsed.devices || []);
-        plays = parsed.totalPlays || 0;
-      }
-
-      devices.add(deviceId);
-      plays += 1;
-
-      const newStats = {
-        totalPlays: plays,
-        uniqueDevices: devices.size,
-        devices: Array.from(devices),
-      };
-
-      await window.storage.set("game_stats", JSON.stringify(newStats), true);
-      setStats({ totalPlays: plays, uniqueDevices: devices.size });
-
-      const playKey = `play_${Date.now()}_${deviceId.substring(0, 8)}`;
-      await window.storage.set(playKey, JSON.stringify(gameData), true);
-    } catch (error) {
-      console.error("Error saving game result:", error);
-    }
-  };
 
   const calculateLove = () => {
     if (!name1.trim() || !name2.trim()) {
-      alert("Please enter both names! 💕");
+      alert('Please enter both names! 💕');
       return;
     }
 
@@ -214,40 +169,48 @@ const LoveCalculatorGame = () => {
     setTimeout(() => {
       const combined = (name1 + name2).toLowerCase();
       let score = 0;
-
+      
       for (let i = 0; i < combined.length; i++) {
         score += combined.charCodeAt(i);
       }
-
+      
       score += Math.floor(Math.random() * 30);
-      const percentage = score % 101;
-
+      const percentage = (score % 101);
+      
       const gameData = {
         name1: name1.trim(),
         name2: name2.trim(),
         percentage,
         deviceId,
         timestamp: new Date().toISOString(),
-        date: new Date().toLocaleDateString(),
+        date: new Date().toLocaleString()
       };
 
       setResult(gameData);
-      saveGameResult(gameData);
+      
+      // Save to localStorage for personal history
+      const newHistory = [gameData, ...history].slice(0, 10);
+      localStorage.setItem('game_history', JSON.stringify(newHistory));
+      setHistory(newHistory);
+      
+      // Save to GitHub
+      saveToGitHub(gameData);
+      
       setIsSpinning(false);
     }, 2000);
   };
 
   const getMessage = (percentage) => {
-    if (percentage >= 90) return "🔥 Perfect Match! Soul Mates!";
-    if (percentage >= 70) return "💖 Great Chemistry! Love is in the air!";
-    if (percentage >= 50) return "💕 Good Potential! Give it a try!";
-    if (percentage >= 30) return "💛 Friendship First! Build it up!";
-    return "💙 Better as friends! But who knows? 😉";
+    if (percentage >= 90) return '🔥 Perfect Match! Soul Mates!';
+    if (percentage >= 70) return '💖 Great Chemistry! Love is in the air!';
+    if (percentage >= 50) return '💕 Good Potential! Give it a try!';
+    if (percentage >= 30) return '💛 Friendship First! Build it up!';
+    return '💙 Better as friends! But who knows? 😉';
   };
 
   const resetGame = () => {
-    setName1("");
-    setName2("");
+    setName1('');
+    setName2('');
     setResult(null);
   };
 
@@ -256,18 +219,11 @@ const LoveCalculatorGame = () => {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <Heart
-              className="w-12 h-12 text-white animate-pulse"
-              fill="white"
-            />
+            <Heart className="w-12 h-12 text-white animate-pulse" fill="white" />
             <Sparkles className="w-8 h-8 text-yellow-300 ml-2" />
           </div>
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Love Calculator
-          </h1>
-          <p className="text-white/90 text-sm">
-            Discover your love compatibility! 💘
-          </p>
+          <h1 className="text-4xl font-bold text-white mb-2">Love Calculator</h1>
+          <p className="text-white/90 text-sm">Discover your love compatibility! 💘</p>
         </div>
 
         <div className="bg-white rounded-3xl shadow-2xl p-8 mb-4">
@@ -310,8 +266,8 @@ const LoveCalculatorGame = () => {
                 disabled={isSpinning}
                 className={`w-full py-4 rounded-xl font-bold text-white text-lg transition-all transform ${
                   isSpinning
-                    ? "bg-gray-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-pink-500 to-purple-600 hover:scale-105 hover:shadow-lg"
+                    ? 'bg-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-pink-500 to-purple-600 hover:scale-105 hover:shadow-lg'
                 }`}
               >
                 {isSpinning ? (
@@ -320,7 +276,7 @@ const LoveCalculatorGame = () => {
                     Calculating Love...
                   </span>
                 ) : (
-                  "💕 Calculate Love Percentage"
+                  '💕 Calculate Love Percentage'
                 )}
               </button>
             </div>
@@ -328,9 +284,7 @@ const LoveCalculatorGame = () => {
             <div className="text-center space-y-6">
               <div className="relative">
                 <div className="w-48 h-48 mx-auto rounded-full bg-gradient-to-br from-pink-400 to-purple-600 flex items-center justify-center shadow-xl">
-                  <div className="text-6xl font-bold text-white">
-                    {result.percentage}%
-                  </div>
+                  <div className="text-6xl font-bold text-white">{result.percentage}%</div>
                 </div>
                 <Sparkles className="w-8 h-8 text-yellow-400 absolute top-0 right-1/4 animate-bounce" />
                 <Sparkles className="w-6 h-6 text-pink-400 absolute bottom-0 left-1/4 animate-pulse" />
@@ -359,15 +313,11 @@ const LoveCalculatorGame = () => {
         <div className="bg-white/90 rounded-2xl shadow-lg p-4 mb-4">
           <div className="flex justify-between items-center text-sm">
             <div className="text-center">
-              <div className="font-bold text-purple-600 text-xl">
-                {stats.totalPlays}
-              </div>
+              <div className="font-bold text-purple-600 text-xl">{stats.totalPlays}</div>
               <div className="text-gray-600">Total Plays</div>
             </div>
             <div className="text-center">
-              <div className="font-bold text-pink-600 text-xl">
-                {stats.uniqueDevices}
-              </div>
+              <div className="font-bold text-pink-600 text-xl">{stats.uniqueDevices}</div>
               <div className="text-gray-600">Unique Devices</div>
             </div>
             <button
@@ -384,17 +334,12 @@ const LoveCalculatorGame = () => {
             <h3 className="font-bold text-gray-800 mb-3">Your History</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {history.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-2 bg-purple-50 rounded-lg text-sm"
-                >
+                <div key={idx} className="flex items-center justify-between p-2 bg-purple-50 rounded-lg text-sm">
                   <div>
-                    <span className="font-semibold">{item.name1}</span> 💕{" "}
+                    <span className="font-semibold">{item.name1}</span> 💕{' '}
                     <span className="font-semibold">{item.name2}</span>
                   </div>
-                  <div className="font-bold text-purple-600">
-                    {item.percentage}%
-                  </div>
+                  <div className="font-bold text-purple-600">{item.percentage}%</div>
                 </div>
               ))}
             </div>
@@ -402,8 +347,9 @@ const LoveCalculatorGame = () => {
         )}
 
         <div className="text-center mt-4">
-          <p className="text-white/70 text-xs">
-            Device ID: {deviceId.substring(0, 8)}...
+          <p className="text-white/70 text-xs">Device ID: {deviceId.substring(0, 8)}...</p>
+          <p className="text-white/70 text-xs mt-1">
+            📁 Data saved to GitHub: plays.json
           </p>
         </div>
       </div>
@@ -411,4 +357,4 @@ const LoveCalculatorGame = () => {
   );
 };
 
-ReactDOM.render(<LoveCalculatorGame />, document.getElementById("root"));
+ReactDOM.render(<LoveCalculatorGame />, document.getElementById('root'));

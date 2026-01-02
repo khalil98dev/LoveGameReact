@@ -25,11 +25,17 @@ const History = ({ className }) => (
   </svg>
 );
 
-// GitHub Configuration - REPLACE WITH YOUR ACTUAL TOKEN
+const GitHub = ({ className }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
+  </svg>
+);
+
+// GitHub Configuration - IMPORTANT: Replace with your actual token
 const GITHUB_CONFIG = {
   owner: 'khalil98dev',
   repo: 'LoveGameReact',
-  token: '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', // Replace with your actual token
+  token: 'YOUR_GITHUB_TOKEN_HERE', // Replace with your actual GitHub token
   filePath: 'plays.json'
 };
 
@@ -43,6 +49,7 @@ const LoveCalculatorGame = () => {
   const [showHistory, setShowHistory] = useState(false);
   const [stats, setStats] = useState({ totalPlays: 0, uniqueDevices: 0 });
   const [fileSha, setFileSha] = useState('');
+  const [githubStatus, setGithubStatus] = useState('loading'); // loading, connected, error
 
   const generateUUID = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -62,31 +69,54 @@ const LoveCalculatorGame = () => {
     return id;
   };
 
-  // Helper function to safely decode base64
-  const safeAtob = (str) => {
+  // Test GitHub connection
+  const testGitHubConnection = async () => {
     try {
-      // Remove any whitespace and URL-safe characters
-      const cleanStr = str.replace(/\s/g, '').replace(/_/g, '/').replace(/-/g, '+');
-      return atob(cleanStr);
+      setGithubStatus('loading');
+      const response = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      );
+      
+      if (response.ok) {
+        console.log('✅ GitHub repository accessible');
+        return true;
+      } else {
+        console.error('❌ Cannot access repository:', response.status);
+        setGithubStatus('error');
+        return false;
+      }
     } catch (error) {
-      console.error('Base64 decoding failed:', error);
-      return null;
+      console.error('❌ GitHub connection error:', error);
+      setGithubStatus('error');
+      return false;
     }
-  };
-
-  // Helper function to safely encode to base64
-  const safeBtoa = (str) => {
-    return btoa(unescape(encodeURIComponent(str)));
   };
 
   // Load data from GitHub
   const loadFromGitHub = async () => {
     try {
+      setGithubStatus('loading');
+      
+      // First, test if we can access the repo
+      const canAccess = await testGitHubConnection();
+      if (!canAccess) {
+        console.log('Using local data only');
+        loadLocalData();
+        return;
+      }
+
+      // Try to get the file
       const response = await fetch(
         `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
         {
           headers: {
-            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
             'Accept': 'application/vnd.github.v3+json'
           }
         }
@@ -96,104 +126,95 @@ const LoveCalculatorGame = () => {
         const data = await response.json();
         setFileSha(data.sha);
         
-        let content;
-        if (data.content) {
-          try {
-            const decoded = safeAtob(data.content);
-            if (decoded) {
-              content = JSON.parse(decoded);
-            } else {
-              throw new Error('Failed to decode content');
-            }
-          } catch (error) {
-            console.error('Error parsing GitHub content, using default:', error);
-            content = {
-              devices: [],
-              plays: [],
-              stats: { totalPlays: 0, uniqueDevices: 0 }
-            };
-          }
-        } else {
-          content = {
-            devices: [],
-            plays: [],
-            stats: { totalPlays: 0, uniqueDevices: 0 }
-          };
-        }
-        
-        setStats({
-          totalPlays: content.stats.totalPlays,
-          uniqueDevices: content.stats.uniqueDevices
-        });
-
-        // Load personal history from localStorage
-        const localHistory = localStorage.getItem('game_history');
-        if (localHistory) {
-          try {
-            setHistory(JSON.parse(localHistory));
-          } catch (e) {
-            console.error('Error parsing local history:', e);
-          }
+        // Decode base64 content
+        try {
+          const decodedContent = atob(data.content.replace(/\n/g, ''));
+          const content = JSON.parse(decodedContent);
+          
+          setStats({
+            totalPlays: content.stats.totalPlays || 0,
+            uniqueDevices: content.stats.uniqueDevices || 0
+          });
+          
+          setGithubStatus('connected');
+          console.log('✅ Data loaded from GitHub:', content);
+        } catch (parseError) {
+          console.error('Error parsing GitHub data:', parseError);
+          loadLocalData();
         }
       } else if (response.status === 404) {
-        // File doesn't exist yet, that's okay
-        console.log('File not found, will create on first save');
-        setStats({ totalPlays: 0, uniqueDevices: 0 });
+        // File doesn't exist yet - that's okay
+        console.log('📝 plays.json not found, will create on first save');
+        setGithubStatus('connected');
       } else {
-        console.error('GitHub API error:', response.status, response.statusText);
+        console.error('GitHub API error:', response.status);
+        setGithubStatus('error');
+        loadLocalData();
       }
     } catch (error) {
       console.error('Error loading from GitHub:', error);
-      setStats({ totalPlays: 0, uniqueDevices: 0 });
+      setGithubStatus('error');
+      loadLocalData();
+    }
+  };
+
+  // Load data from localStorage only
+  const loadLocalData = () => {
+    // Load personal history from localStorage
+    const localHistory = localStorage.getItem('game_history');
+    if (localHistory) {
+      try {
+        const parsedHistory = JSON.parse(localHistory);
+        setHistory(parsedHistory);
+        
+        // Calculate stats from local history
+        const devices = new Set();
+        parsedHistory.forEach(play => {
+          if (play.deviceId) devices.add(play.deviceId);
+        });
+        
+        setStats({
+          totalPlays: parsedHistory.length,
+          uniqueDevices: devices.size
+        });
+      } catch (e) {
+        console.error('Error parsing local history:', e);
+      }
     }
   };
 
   // Save data to GitHub
   const saveToGitHub = async (gameData) => {
     try {
-      let currentContent;
-      let currentSha = fileSha;
-      
-      // Try to get existing file
-      try {
-        const getResponse = await fetch(
-          `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-          {
-            headers: {
-              'Authorization': `token ${GITHUB_CONFIG.token}`,
-              'Accept': 'application/vnd.github.v3+json'
+      let currentContent = {
+        devices: [],
+        plays: [],
+        stats: { totalPlays: 0, uniqueDevices: 0 }
+      };
+      let sha = fileSha;
+
+      // Try to get existing file if we have a SHA
+      if (sha) {
+        try {
+          const getResponse = await fetch(
+            `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
+                'Accept': 'application/vnd.github.v3+json'
+              }
             }
+          );
+          
+          if (getResponse.ok) {
+            const currentFile = await getResponse.json();
+            const decodedContent = atob(currentFile.content.replace(/\n/g, ''));
+            currentContent = JSON.parse(decodedContent);
+            sha = currentFile.sha;
           }
-        );
-        
-        if (getResponse.ok) {
-          const currentFile = await getResponse.json();
-          currentSha = currentFile.sha;
-          const decoded = safeAtob(currentFile.content);
-          if (decoded) {
-            currentContent = JSON.parse(decoded);
-          } else {
-            currentContent = {
-              devices: [],
-              plays: [],
-              stats: { totalPlays: 0, uniqueDevices: 0 }
-            };
-          }
-        } else {
-          // File doesn't exist yet
-          currentContent = {
-            devices: [],
-            plays: [],
-            stats: { totalPlays: 0, uniqueDevices: 0 }
-          };
+        } catch (error) {
+          console.log('Creating new file, could not fetch existing');
         }
-      } catch (error) {
-        console.error('Error fetching existing file:', error);
-        currentContent = {
-          devices: [],
-          plays: [],
-          stats: { totalPlays: 0, uniqueDevices: 0 }
-        };
       }
 
       // Update content
@@ -206,18 +227,17 @@ const LoveCalculatorGame = () => {
 
       // Convert to base64
       const contentStr = JSON.stringify(currentContent, null, 2);
-      const base64Content = safeBtoa(contentStr);
+      const base64Content = btoa(unescape(encodeURIComponent(contentStr)));
 
       // Prepare request body
       const requestBody = {
         message: `New play: ${gameData.name1} ❤️ ${gameData.name2} = ${gameData.percentage}%`,
-        content: base64Content
+        content: base64Content,
+        sha: sha || undefined
       };
 
-      // Only include sha if we have one (for updates, not creates)
-      if (currentSha) {
-        requestBody.sha = currentSha;
-      }
+      // Remove sha if it's empty string
+      if (!sha) delete requestBody.sha;
 
       // Commit changes to GitHub
       const updateResponse = await fetch(
@@ -225,7 +245,7 @@ const LoveCalculatorGame = () => {
         {
           method: 'PUT',
           headers: {
-            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
             'Accept': 'application/vnd.github.v3+json',
             'Content-Type': 'application/json'
           },
@@ -241,18 +261,37 @@ const LoveCalculatorGame = () => {
           totalPlays: currentContent.stats.totalPlays,
           uniqueDevices: currentContent.stats.uniqueDevices
         });
+        setGithubStatus('connected');
+        return true;
       } else {
         const errorData = await updateResponse.json();
-        console.error('❌ GitHub API error:', errorData.message);
+        console.error('❌ GitHub API error:', errorData);
+        setGithubStatus('error');
+        return false;
       }
     } catch (error) {
       console.error('❌ Error saving to GitHub:', error);
+      setGithubStatus('error');
+      return false;
     }
   };
 
+  // Initialize
   useEffect(() => {
     const id = getDeviceId();
     setDeviceId(id);
+    
+    // Load personal history from localStorage immediately
+    const localHistory = localStorage.getItem('game_history');
+    if (localHistory) {
+      try {
+        setHistory(JSON.parse(localHistory));
+      } catch (e) {
+        console.error('Error parsing local history:', e);
+      }
+    }
+    
+    // Then try to load from GitHub
     loadFromGitHub();
   }, []);
 
@@ -264,7 +303,7 @@ const LoveCalculatorGame = () => {
 
     setIsSpinning(true);
     
-    setTimeout(() => {
+    setTimeout(async () => {
       const combined = (name1 + name2).toLowerCase();
       let score = 0;
       
@@ -291,8 +330,21 @@ const LoveCalculatorGame = () => {
       localStorage.setItem('game_history', JSON.stringify(newHistory));
       setHistory(newHistory);
 
-      // Save to GitHub
-      saveToGitHub(gameData);
+      // Try to save to GitHub
+      const savedToGitHub = await saveToGitHub(gameData);
+      
+      if (!savedToGitHub) {
+        // If GitHub save failed, update local stats
+        const devices = new Set();
+        newHistory.forEach(play => {
+          if (play.deviceId) devices.add(play.deviceId);
+        });
+        
+        setStats({
+          totalPlays: newHistory.length,
+          uniqueDevices: devices.size
+        });
+      }
       
       setIsSpinning(false);
     }, 2000);
@@ -310,6 +362,10 @@ const LoveCalculatorGame = () => {
     setName1('');
     setName2('');
     setResult(null);
+  };
+
+  const retryGitHubConnection = () => {
+    loadFromGitHub();
   };
 
   return (
@@ -425,6 +481,34 @@ const LoveCalculatorGame = () => {
               <History className="w-6 h-6 text-purple-600" />
             </button>
           </div>
+          
+          {/* GitHub Status Indicator */}
+          <div className="mt-3 pt-3 border-t border-gray-200">
+            <div className="flex items-center justify-center">
+              <GitHub className={`w-5 h-5 mr-2 ${
+                githubStatus === 'connected' ? 'text-green-500' : 
+                githubStatus === 'error' ? 'text-red-500' : 
+                'text-gray-400'
+              }`} />
+              <span className={`text-xs ${
+                githubStatus === 'connected' ? 'text-green-600' : 
+                githubStatus === 'error' ? 'text-red-600' : 
+                'text-gray-500'
+              }`}>
+                {githubStatus === 'connected' ? '✅ Connected to GitHub' : 
+                 githubStatus === 'error' ? '❌ GitHub offline (using local)' : 
+                 '⏳ Connecting...'}
+              </span>
+              {githubStatus === 'error' && (
+                <button 
+                  onClick={retryGitHubConnection}
+                  className="ml-2 text-xs text-blue-500 hover:text-blue-700"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {showHistory && history.length > 0 && (
@@ -446,7 +530,7 @@ const LoveCalculatorGame = () => {
 
         <div className="text-center mt-4">
           <p className="text-white/70 text-xs">Device ID: {deviceId.substring(0, 8)}...</p>
-          <p className="text-white/70 text-xs mt-1">📁 Data saved to GitHub: plays.json</p>
+          <p className="text-white/70 text-xs mt-1">📁 Data saved to: {githubStatus === 'connected' ? 'GitHub' : 'Local Storage'}</p>
         </div>
       </div>
     </div>

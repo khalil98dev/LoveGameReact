@@ -27,9 +27,9 @@ const History = ({ className }) => (
 
 // GitHub Configuration
 const GITHUB_CONFIG = {
-  owner: 'YOUR-GITHUB-USERNAME',  // ⚠️ CHANGE THIS
-  repo: 'love-calculator-game',    // Your repository name
-  token: 'YOUR-GITHUB-TOKEN',      // ⚠️ CHANGE THIS - Paste your token here
+  owner: 'khalil98dev',  // ⚠️ CHANGE THIS
+  repo: 'LoveGameReact',    // Your repository name
+  token: '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',      // ⚠️ CHANGE THIS - Paste your token here
   filePath: 'plays.json'
 };
 

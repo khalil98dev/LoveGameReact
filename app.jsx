@@ -25,26 +25,13 @@ const History = ({ className }) => (
   </svg>
 );
 
-// GitHub Configuration
-// const GITHUB_CONFIG = {
-//   owner: 'khalil98dev',  // ⚠️ CHANGE THIS
-//   repo: 'LoveGameReact',    // Your repository name
-//   token: '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',      // ⚠️ CHANGE THIS - Paste your token here
-//   filePath: 'plays.json'
-// };
-
-const STORAGE_KEY = "love_game_data";
-
-
-const getInitialData = () => ({
-  devices: [],
-  plays: [],
-  stats: {
-    totalPlays: 0,
-    uniqueDevices: 0
-  }
-});
-
+// GitHub Configuration - REPLACE WITH YOUR ACTUAL TOKEN
+const GITHUB_CONFIG = {
+  owner: 'khalil98dev',
+  repo: 'LoveGameReact',
+  token: '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', // Replace with your actual token
+  filePath: 'plays.json'
+};
 
 const LoveCalculatorGame = () => {
   const [name1, setName1] = useState('');
@@ -75,49 +62,198 @@ const LoveCalculatorGame = () => {
     return id;
   };
 
+  // Helper function to safely decode base64
+  const safeAtob = (str) => {
+    try {
+      // Remove any whitespace and URL-safe characters
+      const cleanStr = str.replace(/\s/g, '').replace(/_/g, '/').replace(/-/g, '+');
+      return atob(cleanStr);
+    } catch (error) {
+      console.error('Base64 decoding failed:', error);
+      return null;
+    }
+  };
+
+  // Helper function to safely encode to base64
+  const safeBtoa = (str) => {
+    return btoa(unescape(encodeURIComponent(str)));
+  };
+
   // Load data from GitHub
-const loadFromStorage = () => {
-  let data = localStorage.getItem(STORAGE_KEY);
+  const loadFromGitHub = async () => {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+        {
+          headers: {
+            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        }
+      );
 
-  if (!data) {
-    data = getInitialData();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } else {
-    data = JSON.parse(data);
-  }
+      if (response.ok) {
+        const data = await response.json();
+        setFileSha(data.sha);
+        
+        let content;
+        if (data.content) {
+          try {
+            const decoded = safeAtob(data.content);
+            if (decoded) {
+              content = JSON.parse(decoded);
+            } else {
+              throw new Error('Failed to decode content');
+            }
+          } catch (error) {
+            console.error('Error parsing GitHub content, using default:', error);
+            content = {
+              devices: [],
+              plays: [],
+              stats: { totalPlays: 0, uniqueDevices: 0 }
+            };
+          }
+        } else {
+          content = {
+            devices: [],
+            plays: [],
+            stats: { totalPlays: 0, uniqueDevices: 0 }
+          };
+        }
+        
+        setStats({
+          totalPlays: content.stats.totalPlays,
+          uniqueDevices: content.stats.uniqueDevices
+        });
 
-  setStats(data.stats);
-
-  const localHistory = localStorage.getItem("game_history");
-  if (localHistory) {
-    setHistory(JSON.parse(localHistory));
-  }
-};
+        // Load personal history from localStorage
+        const localHistory = localStorage.getItem('game_history');
+        if (localHistory) {
+          try {
+            setHistory(JSON.parse(localHistory));
+          } catch (e) {
+            console.error('Error parsing local history:', e);
+          }
+        }
+      } else if (response.status === 404) {
+        // File doesn't exist yet, that's okay
+        console.log('File not found, will create on first save');
+        setStats({ totalPlays: 0, uniqueDevices: 0 });
+      } else {
+        console.error('GitHub API error:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('Error loading from GitHub:', error);
+      setStats({ totalPlays: 0, uniqueDevices: 0 });
+    }
+  };
 
   // Save data to GitHub
-  const saveToStorage = (gameData) => {
-  let data = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  const saveToGitHub = async (gameData) => {
+    try {
+      let currentContent;
+      let currentSha = fileSha;
+      
+      // Try to get existing file
+      try {
+        const getResponse = await fetch(
+          `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+          {
+            headers: {
+              'Authorization': `token ${GITHUB_CONFIG.token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
+          }
+        );
+        
+        if (getResponse.ok) {
+          const currentFile = await getResponse.json();
+          currentSha = currentFile.sha;
+          const decoded = safeAtob(currentFile.content);
+          if (decoded) {
+            currentContent = JSON.parse(decoded);
+          } else {
+            currentContent = {
+              devices: [],
+              plays: [],
+              stats: { totalPlays: 0, uniqueDevices: 0 }
+            };
+          }
+        } else {
+          // File doesn't exist yet
+          currentContent = {
+            devices: [],
+            plays: [],
+            stats: { totalPlays: 0, uniqueDevices: 0 }
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching existing file:', error);
+        currentContent = {
+          devices: [],
+          plays: [],
+          stats: { totalPlays: 0, uniqueDevices: 0 }
+        };
+      }
 
-  if (!data) data = getInitialData();
+      // Update content
+      const deviceSet = new Set(currentContent.devices);
+      deviceSet.add(deviceId);
+      currentContent.devices = Array.from(deviceSet);
+      currentContent.plays.push(gameData);
+      currentContent.stats.totalPlays = currentContent.plays.length;
+      currentContent.stats.uniqueDevices = deviceSet.size;
 
-  if (!data.devices.includes(deviceId)) {
-    data.devices.push(deviceId);
-  }
+      // Convert to base64
+      const contentStr = JSON.stringify(currentContent, null, 2);
+      const base64Content = safeBtoa(contentStr);
 
-  data.plays.push(gameData);
+      // Prepare request body
+      const requestBody = {
+        message: `New play: ${gameData.name1} ❤️ ${gameData.name2} = ${gameData.percentage}%`,
+        content: base64Content
+      };
 
-  data.stats.totalPlays = data.plays.length;
-  data.stats.uniqueDevices = data.devices.length;
+      // Only include sha if we have one (for updates, not creates)
+      if (currentSha) {
+        requestBody.sha = currentSha;
+      }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      // Commit changes to GitHub
+      const updateResponse = await fetch(
+        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `token ${GITHUB_CONFIG.token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        }
+      );
 
-  setStats(data.stats);
-};
+      if (updateResponse.ok) {
+        const updatedFile = await updateResponse.json();
+        setFileSha(updatedFile.sha);
+        console.log('✅ Data saved to GitHub!');
+        setStats({
+          totalPlays: currentContent.stats.totalPlays,
+          uniqueDevices: currentContent.stats.uniqueDevices
+        });
+      } else {
+        const errorData = await updateResponse.json();
+        console.error('❌ GitHub API error:', errorData.message);
+      }
+    } catch (error) {
+      console.error('❌ Error saving to GitHub:', error);
+    }
+  };
 
   useEffect(() => {
     const id = getDeviceId();
     setDeviceId(id);
-    loadFromStorage();
+    loadFromGitHub();
   }, []);
 
   const calculateLove = () => {
@@ -127,7 +263,7 @@ const loadFromStorage = () => {
     }
 
     setIsSpinning(true);
-
+    
     setTimeout(() => {
       const combined = (name1 + name2).toLowerCase();
       let score = 0;
@@ -149,15 +285,14 @@ const loadFromStorage = () => {
       };
 
       setResult(gameData);
-      
+
       // Save to localStorage for personal history
       const newHistory = [gameData, ...history].slice(0, 10);
       localStorage.setItem('game_history', JSON.stringify(newHistory));
       setHistory(newHistory);
-      
+
       // Save to GitHub
-      saveToStorage(gameData);
-      
+      saveToGitHub(gameData);
       
       setIsSpinning(false);
     }, 2000);
@@ -205,11 +340,11 @@ const loadFromStorage = () => {
                   disabled={isSpinning}
                 />
               </div>
-
+              
               <div className="flex justify-center">
                 <Heart className="w-8 h-8 text-pink-400" fill="currentColor" />
               </div>
-
+              
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   👩 Second Name
@@ -223,7 +358,7 @@ const loadFromStorage = () => {
                   disabled={isSpinning}
                 />
               </div>
-
+              
               <button
                 onClick={calculateLove}
                 disabled={isSpinning}
@@ -252,7 +387,7 @@ const loadFromStorage = () => {
                 <Sparkles className="w-8 h-8 text-yellow-400 absolute top-0 right-1/4 animate-bounce" />
                 <Sparkles className="w-6 h-6 text-pink-400 absolute bottom-0 left-1/4 animate-pulse" />
               </div>
-
+              
               <div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-2">
                   {result.name1} 💕 {result.name2}
@@ -261,7 +396,7 @@ const loadFromStorage = () => {
                   {getMessage(result.percentage)}
                 </p>
               </div>
-
+              
               <button
                 onClick={resetGame}
                 className="w-full py-3 rounded-xl font-semibold text-purple-600 border-2 border-purple-600 hover:bg-purple-50 transition"
@@ -311,9 +446,7 @@ const loadFromStorage = () => {
 
         <div className="text-center mt-4">
           <p className="text-white/70 text-xs">Device ID: {deviceId.substring(0, 8)}...</p>
-          <p className="text-white/70 text-xs mt-1">
-            📁 Data saved to GitHub: plays.json
-          </p>
+          <p className="text-white/70 text-xs mt-1">📁 Data saved to GitHub: plays.json</p>
         </div>
       </div>
     </div>

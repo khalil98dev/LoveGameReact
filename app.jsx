@@ -69,154 +69,134 @@ const LoveCalculatorGame = () => {
     return id;
   };
 
-  // Test GitHub connection
-  const testGitHubConnection = async () => {
-    try {
-      setGithubStatus('loading');
-      const response = await fetch(
-        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
-      );
-      
-      if (response.ok) {
-        console.log('✅ GitHub repository accessible');
-        return true;
-      } else {
-        console.error('❌ Cannot access repository:', response.status);
-        setGithubStatus('error');
-        return false;
+ const testGitHubConnection = async () => {
+  if (!GITHUB_CONFIG.token) {
+    console.log('No GitHub token configured');
+    setDebugInfo('No GitHub token configured');
+    setGithubStatus('error');
+    return false;
+  }
+
+  try {
+    setGithubStatus('loading');
+    setDebugInfo('Testing GitHub connection...');
+    
+    // First, test if token is valid by calling user endpoint
+    const response = await fetch('https://api.github.com/user', {
+      headers: {
+        'Authorization': `token ${GITHUB_CONFIG.token}`, // Changed from Bearer to token
+        'Accept': 'application/vnd.github.v3+json'
       }
-    } catch (error) {
-      console.error('❌ GitHub connection error:', error);
+    });
+    
+    if (response.ok) {
+      const userData = await response.json();
+      console.log('✅ GitHub connection successful, user:', userData.login);
+      setDebugInfo(`Connected as: ${userData.login}`);
+      setGithubStatus('connected');
+      return true;
+    } else {
+      const errorText = await response.text();
+      console.error('❌ GitHub token invalid:', response.status, errorText);
+      
+      // Provide specific guidance based on error
+      if (response.status === 401) {
+        setDebugInfo('Token invalid/expired. Create new token with repo permissions.');
+      } else if (response.status === 403) {
+        setDebugInfo('Token needs repo scope permissions.');
+      } else {
+        setDebugInfo(`Connection failed: ${response.status}`);
+      }
+      
       setGithubStatus('error');
       return false;
     }
-  };
+  } catch (error) {
+    console.error('❌ Network error:', error);
+    setDebugInfo(`Network error: ${error.message}`);
+    setGithubStatus('error');
+    return false;
+  }
+};
 
-  // Load data from GitHub
-  const loadFromGitHub = async () => {
-    try {
-      setGithubStatus('loading');
+// Simplified loadFromGitHub function
+const loadFromGitHub = async () => {
+  try {
+    // Test connection first
+    const connected = await testGitHubConnection();
+    if (!connected) {
+      console.log('Using local data only');
+      loadLocalData();
+      return;
+    }
+
+    // If connected, try to load the file
+    setDebugInfo('Loading plays.json...');
+    const response = await fetch(
+      `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
+      {
+        headers: {
+          'Authorization': `token ${GITHUB_CONFIG.token}`,
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      }
+    );
+
+    if (response.ok) {
+      const data = await response.json();
+      setFileSha(data.sha);
       
-      // First, test if we can access the repo
-      const canAccess = await testGitHubConnection();
-      if (!canAccess) {
-        console.log('Using local data only');
-        loadLocalData();
-        return;
-      }
-
-      // Try to get the file
-      const response = await fetch(
-        `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        setFileSha(data.sha);
-        
-        // Decode base64 content
-        try {
-          const decodedContent = atob(data.content.replace(/\n/g, ''));
-          const content = JSON.parse(decodedContent);
-          
-          setStats({
-            totalPlays: content.stats.totalPlays || 0,
-            uniqueDevices: content.stats.uniqueDevices || 0
-          });
-          
-          setGithubStatus('connected');
-          console.log('✅ Data loaded from GitHub:', content);
-        } catch (parseError) {
-          console.error('Error parsing GitHub data:', parseError);
-          loadLocalData();
-        }
-      } else if (response.status === 404) {
-        // File doesn't exist yet - that's okay
-        console.log('📝 plays.json not found, will create on first save');
-        setGithubStatus('connected');
-      } else {
-        console.error('GitHub API error:', response.status);
-        setGithubStatus('error');
-        loadLocalData();
-      }
-    } catch (error) {
-      console.error('Error loading from GitHub:', error);
-      setGithubStatus('error');
+      // Clean and decode base64
+      const cleanContent = data.content.replace(/\s/g, '');
+      const decodedContent = atob(cleanContent);
+      const content = JSON.parse(decodedContent);
+      
+      console.log('✅ Loaded data:', content);
+      setStats({
+        totalPlays: content.stats.totalPlays,
+        uniqueDevices: content.stats.uniqueDevices
+      });
+      
+      setDebugInfo(`Loaded ${content.plays.length} plays`);
+      setGithubStatus('connected');
+    } else if (response.status === 404) {
+      // File doesn't exist - that's OK
+      console.log('File not found, will create on first save');
+      setDebugInfo('File will be created on first save');
+      setGithubStatus('connected');
+    } else {
+      console.error('Failed to load file:', response.status);
+      setDebugInfo(`File load failed: ${response.status}`);
       loadLocalData();
     }
-  };
+  } catch (error) {
+    console.error('Load error:', error);
+    setDebugInfo(`Error: ${error.message}`);
+    loadLocalData();
+  }
+};
 
-  // Load data from localStorage only
-  const loadLocalData = () => {
-    // Load personal history from localStorage
-    const localHistory = localStorage.getItem('game_history');
-    if (localHistory) {
-      try {
-        const parsedHistory = JSON.parse(localHistory);
-        setHistory(parsedHistory);
-        
-        // Calculate stats from local history
-        const devices = new Set();
-        parsedHistory.forEach(play => {
-          if (play.deviceId) devices.add(play.deviceId);
-        });
-        
-        setStats({
-          totalPlays: parsedHistory.length,
-          uniqueDevices: devices.size
-        });
-      } catch (e) {
-        console.error('Error parsing local history:', e);
-      }
-    }
-  };
-
-  // Save data to GitHub
-  const saveToGitHub = async (gameData) => {
-    try {
-      let currentContent = {
-        devices: [],
-        plays: [],
-        stats: { totalPlays: 0, uniqueDevices: 0 }
-      };
-      let sha = fileSha;
-
-      // Try to get existing file if we have a SHA
-      if (sha) {
-        try {
-          const getResponse = await fetch(
-            `https://api.github.com/repos/${GITHUB_CONFIG.owner}/${GITHUB_CONFIG.repo}/contents/${GITHUB_CONFIG.filePath}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${GITHUB_CONFIG.token}`,
-                'Accept': 'application/vnd.github.v3+json'
-              }
-            }
-          );
-          
-          if (getResponse.ok) {
-            const currentFile = await getResponse.json();
-            const decodedContent = atob(currentFile.content.replace(/\n/g, ''));
-            currentContent = JSON.parse(decodedContent);
-            sha = currentFile.sha;
-          }
-        } catch (error) {
-          console.log('Creating new file, could not fetch existing');
-        }
-      }
-
+// Also update the token storage to include repo scope check
+const setGitHubToken = () => {
+  const token = prompt(`Enter GitHub Personal Access Token:
+  
+IMPORTANT: Token must have "repo" scope permission.
+To create a token:
+1. Go to GitHub → Settings → Developer settings → Personal access tokens
+2. Click "Generate new token (classic)"
+3. Select "repo" (full control of private repositories)
+4. Generate and copy the token`);
+  
+  if (token) {
+    // Store token without the "token " prefix
+    GITHUB_CONFIG.token = token.replace(/^token\s+/i, '');
+    localStorage.setItem('github_token', GITHUB_CONFIG.token);
+    
+    // Test the token immediately
+    alert('Token saved! Testing connection...');
+    loadFromGitHub();
+  }
+};
       // Update content
       const deviceSet = new Set(currentContent.devices);
       deviceSet.add(deviceId);
